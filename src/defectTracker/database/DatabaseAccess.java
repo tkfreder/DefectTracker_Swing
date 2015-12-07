@@ -1,0 +1,395 @@
+package defectTracker.database;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.Date;
+
+import defectTracker.model.Defect;
+import defectTracker.model.Priority;
+import defectTracker.model.Status;
+import defectTracker.model.User;
+
+public class DatabaseAccess {
+
+	Connection conn;
+	String dbPath;
+	static final String dbName = "DefectTracker.accdb";
+
+	public DatabaseAccess(String dbPath) {
+		this.dbPath = dbPath;
+	}
+
+	public void getConnection() {
+		try {
+			Class.forName("net.ucanaccess.jdbc.UcanaccessDriver");
+
+			String pathToDatabase = dbPath + dbName;
+
+			this.conn = DriverManager.getConnection("jdbc:ucanaccess://"
+					+ pathToDatabase);
+
+		} catch (SQLException ex) {
+			System.err.println("Error: " + ex);
+		} catch (ClassNotFoundException ex) {
+			System.err.println("Error: " + ex);
+		}
+	}
+
+	public void closeConnection() {
+		try {
+			conn.close();
+		} catch (SQLException ex) {
+			System.err.println("Error: " + ex);
+		}
+	}
+
+	public Integer insertDefect(String title, String statusId, int priorityId,
+			int assigneeId, String description) {
+
+		int rowsInserted = 0;
+		String query = "INSERT into Defects (title, status, priority, assignee, description, create_date)"
+				+ "VALUES (?, ?, ?, ?, ?, ?)";
+
+		try {
+			PreparedStatement stmt = conn.prepareStatement(query);
+			Timestamp currentTime = new Timestamp(new Date().getTime());
+
+			stmt.setString(1, title);
+			stmt.setString(2, statusId);
+			stmt.setInt(3, priorityId);
+			stmt.setInt(4, assigneeId);
+			stmt.setString(5, description);
+			stmt.setTimestamp(6, currentTime);
+
+			rowsInserted = stmt.executeUpdate();
+
+		} catch (SQLException ex) {
+			System.err.println("Error: " + ex);
+		}
+
+		return rowsInserted;
+	}
+
+	public Integer updateDefect(String summary, String statusId, int priority,
+			int assigneeId, String description, int defectId) {
+		int rowsUpdated = 0;
+
+		String query = "UPDATE Defects set title = ?, status = ?, priority = ?, assignee = ?, description = ?"
+				+ " WHERE defect_id = ?";
+		try {
+
+			PreparedStatement stmt = conn.prepareStatement(query);
+
+			stmt.setString(1, summary);
+			stmt.setString(2, statusId);
+			stmt.setInt(3, priority);
+			stmt.setInt(4, assigneeId);
+			stmt.setString(5, description);
+			stmt.setInt(6, defectId);
+
+			rowsUpdated = stmt.executeUpdate();
+
+		} catch (SQLException ex) {
+			System.err.println("Error: " + ex);
+		}
+
+		return rowsUpdated;
+	}
+
+	public Defect getDefect(int defectId) {
+
+		String sql = "SELECT a.defect_id, a.title, a.status, c.name,  a.priority, d.name, a.assignee, b.first_name, b.last_name, b.email, a.description"
+				+ " FROM Defects a INNER JOIN Users b on a.assignee = b.user_id"
+				+ " INNER JOIN Status_Codes c on a.status = c.status_id"
+				+ " INNER JOIN Priorities d on a.priority = d.priority_id"
+				+ " WHERE a.defect_id = ?" + " ORDER BY defect_id DESC";
+
+		Defect d = null;
+
+		try {
+			PreparedStatement st = conn.prepareStatement(sql);
+			st.setInt(1, defectId);
+			ResultSet rs = st.executeQuery();
+
+			if (rs.next()) {
+
+				int id = rs.getInt(1);
+				String title = rs.getString(2);
+				Status status = new Status(rs.getString(3), rs.getString(4));
+				Priority priority = new Priority(rs.getInt(5), rs.getString(6));
+				User assignee = new User(rs.getInt(7), rs.getString(8),
+						rs.getString(9), rs.getString(10));
+				String description = rs.getString(11);
+
+				d = new Defect(id, status, priority, assignee, title,
+						description);
+
+			}
+
+			rs.close();
+
+		} catch (SQLException ex) {
+			System.err.println("Error: " + ex);
+		}
+
+		return d;
+	}
+
+	public ArrayList<Defect> getDefects(int sortByColumnId, boolean isAscending) {
+
+		String ascDesc = !isAscending ? " DESC" : " ";
+		String orderBy = " defect_id ";
+
+		switch (sortByColumnId) {
+
+		case 0:
+			break;
+		case 1:
+			orderBy = " a.title ";
+			break;
+		case 2:
+			orderBy = " a.status ";
+			break;
+		case 3:
+			orderBy = " a.priority ";
+			break;
+		case 4:
+			orderBy = " b.first_name ";
+			break;
+		default:
+			break;
+
+		}
+
+		String sql = "SELECT a.defect_id, a.title, a.status, c.name,  a.priority, d.name, a.assignee, b.first_name, b.last_name, b.email, a.description"
+				+ " FROM Defects a INNER JOIN Users b on a.assignee = b.user_id"
+				+ " INNER JOIN Status_Codes c on a.status = c.status_id"
+				+ " INNER JOIN Priorities d on a.priority = d.priority_id"
+				+ " ORDER BY " + orderBy + ascDesc;
+
+		ArrayList<Defect> defects = new ArrayList<Defect>();
+
+		try {
+			Statement st = conn.createStatement();
+			ResultSet rs = st.executeQuery(sql);
+
+			while (rs.next()) {
+
+				int id = rs.getInt(1);
+				String title = rs.getString(2);
+				Status status = new Status(rs.getString(3), rs.getString(4));
+				Priority priority = new Priority(rs.getInt(5), rs.getString(6));
+				User assignee = new User(rs.getInt(7), rs.getString(8),
+						rs.getString(9), rs.getString(10));
+				String description = rs.getString(11);
+
+				Defect d = new Defect(id, status, priority, assignee, title,
+						description);
+
+				defects.add(d);
+			}
+
+			rs.close();
+
+		} catch (SQLException ex) {
+			System.err.println("Error: " + ex);
+		}
+
+		return defects;
+	}
+
+	public ArrayList<Defect> getDefectsByParams(String statusCode,
+			int priorityId, int assigneeId) {
+
+		String sql = "SELECT a.defect_id, a.title, a.status, c.name,  a.priority, d.name, a.assignee, b.first_name, b.last_name, b.email, a.description"
+				+ " FROM Defects a INNER JOIN Users b on a.assignee = b.user_id"
+				+ " INNER JOIN Status_Codes c on a.status = c.status_id"
+				+ " INNER JOIN Priorities d on a.priority = d.priority_id";
+
+		if (statusCode != "" || (priorityId != -1) || (assigneeId != -1)) {
+			sql += " WHERE TRUE";
+
+			if (statusCode != "")
+				sql += " AND a.status = '" + statusCode + "'";
+
+			if (priorityId != -1)
+				sql += " AND a.priority = " + String.valueOf(priorityId);
+
+			if (assigneeId != -1) {
+				sql += " AND b.user_id = " + String.valueOf(assigneeId);
+			}
+		}
+
+		sql += " ORDER BY defect_id DESC";
+
+		ArrayList<Defect> defects = new ArrayList<Defect>();
+
+		try {
+			Statement st = conn.createStatement();
+			ResultSet rs = st.executeQuery(sql);
+
+			while (rs.next()) {
+
+				int id = rs.getInt(1);
+				String title = rs.getString(2);
+				Status status = new Status(rs.getString(3), rs.getString(4));
+				Priority priority = new Priority(rs.getInt(5), rs.getString(6));
+				User assignee = new User(rs.getInt(7), rs.getString(8),
+						rs.getString(9), rs.getString(10));
+				String description = rs.getString(11);
+
+				Defect d = new Defect(id, status, priority, assignee, title,
+						description);
+
+				defects.add(d);
+			}
+
+			rs.close();
+
+		} catch (SQLException ex) {
+			System.err.println("Error: " + ex);
+		}
+
+		return defects;
+	}
+
+	public ArrayList<Priority> getPriorities() {
+		String sql = "SELECT priority_id, name" + " FROM Priorities";
+
+		ArrayList<Priority> priorities = new ArrayList<Priority>();
+
+		try {
+			Statement st = conn.createStatement();
+			ResultSet rs = st.executeQuery(sql);
+
+			while (rs.next()) {
+
+				int id = rs.getInt(1);
+				String name = rs.getString(2);
+
+				Priority p = new Priority(id, name);
+
+				priorities.add(p);
+			}
+
+			rs.close();
+
+		} catch (SQLException ex) {
+			System.err.println("Error: " + ex);
+		}
+
+		return priorities;
+	}
+
+	public ArrayList<Status> getStatuses() {
+		String sql = "SELECT status_id, name" + " FROM Status_Codes";
+
+		ArrayList<Status> statuses = new ArrayList<Status>();
+
+		try {
+			Statement st = conn.createStatement();
+			ResultSet rs = st.executeQuery(sql);
+
+			while (rs.next()) {
+
+				String id = rs.getString(1);
+				String name = rs.getString(2);
+
+				Status s = new Status(id, name);
+
+				statuses.add(s);
+			}
+
+			rs.close();
+
+		} catch (SQLException ex) {
+			System.err.println("Error: " + ex);
+		}
+
+		return statuses;
+	}
+
+	public Integer insertUser(String firstName, String lastName, String email) {
+
+		int rowsInserted = 0;
+		String query = "INSERT into Users (first_name, last_name, email)"
+				+ "VALUES (?, ?, ?)";
+
+		try {
+			PreparedStatement stmt = conn.prepareStatement(query);
+
+			stmt.setString(1, firstName);
+			stmt.setString(2, lastName);
+			stmt.setString(3, email);
+
+			rowsInserted = stmt.executeUpdate();
+
+		} catch (SQLException ex) {
+			System.err.println("Error: " + ex);
+		}
+
+		return rowsInserted;
+	}
+
+	public Integer updateUser(String firstName, String lastName, String email,
+			int userId) {
+
+		int rowsUpdated = 0;
+
+		String query = "UPDATE Users set first_name = ?, last_name = ?, email = ?"
+				+ " WHERE user_id = ?";
+		try {
+
+			PreparedStatement stmt = conn.prepareStatement(query);
+
+			stmt.setString(1, firstName);
+			stmt.setString(2, lastName);
+			stmt.setString(3, email);
+			stmt.setInt(4, userId);
+
+			rowsUpdated = stmt.executeUpdate();
+
+		} catch (SQLException ex) {
+			System.err.println("Error: " + ex);
+		}
+
+		return rowsUpdated;
+	}
+
+	public ArrayList<User> getUsers() {
+		String sql = "SELECT user_id, first_name, last_name, email"
+				+ " FROM Users";
+
+		ArrayList<User> names = new ArrayList<User>();
+
+		try {
+			Statement st = conn.createStatement();
+			ResultSet rs = st.executeQuery(sql);
+
+			while (rs.next()) {
+
+				int id = rs.getInt(1);
+				String fname = rs.getString(2);
+				String lname = rs.getString(3);
+				String email = rs.getString(4);
+
+				User u = new User(id, fname, lname, email);
+
+				names.add(u);
+			}
+
+			rs.close();
+
+		} catch (SQLException ex) {
+			System.err.println("Error: " + ex);
+		}
+
+		return names;
+	}
+}
